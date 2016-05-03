@@ -22,39 +22,64 @@ type Result struct {
 }
 
 type ipData struct {
-	data      []byte
-	data_len  uint32
-	file_path string
-	p_file    *os.File
+	ipStart  []uint32
+	ipEnd    []uint32
+	ip2Num   []uint32
+	data     []byte
+	dataLen  uint32
+	filePath string
+	pFile    *os.File
 }
 
 type QQwry struct {
-	p_ip_data *ipData
-	offset    uint32
+	pIpData *ipData
+	offset  uint32
 }
 
-func ReadIpData(file_path string) (*ipData, error) {
-	res := &ipData{file_path: file_path}
+func InitIpData(filePath string) (*ipData, error) {
+	res := &ipData{filePath: filePath}
 
-	_, err := os.Stat(file_path)
+	_, err := os.Stat(filePath)
 	if err != nil {
 		return res, err
 	}
 
-	file, err := os.OpenFile(file_path, os.O_RDONLY, 0400)
+	file, err := os.OpenFile(filePath, os.O_RDONLY, 0400)
 	defer file.Close()
 
 	if err != nil {
 		return res, err
 	}
-	res.p_file = file
+	res.pFile = file
 
 	res.data, err = ioutil.ReadAll(file)
 	if err != nil {
 		return res, err
 	}
 
-	res.data_len = uint32(len(res.data))
+	res.dataLen = uint32(len(res.data))
+	header := res.data[:8]
+	start := binary.LittleEndian.Uint32(header[:4])
+	end := binary.LittleEndian.Uint32(header[4:])
+	n := int((end-start)/INDEX_LEN + 1)
+
+	res.ip2Num = make([]uint32, n)
+	for i, j := start, 0; i <= end; i += 7 {
+		res.ip2Num[j] = binary.LittleEndian.Uint32(res.data[i : i+4])
+		j += 1
+	}
+
+	res.ipStart = make([]uint32, 256)
+	res.ipEnd = make([]uint32, 256)
+	for i, j := 0, 0; i < n; i = j {
+		for j = i + 1; j < n; j++ {
+			if (res.ip2Num[j] >> 24) != (res.ip2Num[i] >> 24) {
+				break
+			}
+		}
+		res.ipStart[res.ip2Num[i]>>24] = uint32(i)
+		res.ipEnd[res.ip2Num[i]>>24] = uint32(j - 1)
+	}
 
 	return res, nil
 }
@@ -66,48 +91,44 @@ func NewQQwry(p *ipData) *QQwry {
 func (this *QQwry) SearchIpLocation(ip string) (Result, error) {
 	result := Result{}
 
-	if this.p_ip_data == nil {
-		return result, errors.New("from QQwry p_ip_data is nil")
+	if this.pIpData == nil {
+		return result, errors.New("from QQwry pIpData is nil")
 	}
 
-	ip_address := net.ParseIP(ip)
-	if ip_address == nil {
+	ipAddress := net.ParseIP(ip)
+	if ipAddress == nil {
 		return result, errors.New("invalid ip")
 	}
 
-	offset := this.binarySearch(binary.BigEndian.Uint32(ip_address.To4()))
-
-	if offset <= 0 {
-		return result, errors.New("ip not found")
-	}
+	offset := this.binarySearch(binary.BigEndian.Uint32(ipAddress.To4()))
 
 	var country []byte
 	var area []byte
 
-	country_offset := offset + 4
+	countryOffset := offset + 4
 
-	switch this.readMode(country_offset) {
+	switch this.readMode(countryOffset) {
 	case 0:
 	case REDIRECT_MODE_1:
-		country_offset = this.readUint24()
-		switch this.readMode(country_offset) {
+		countryOffset = this.readUint24()
+		switch this.readMode(countryOffset) {
 		case REDIRECT_MODE_2:
-			temp_offset := this.readUint24()
-			country = this.readString(temp_offset)
-			country_offset += 4
+			tempOffset := this.readUint24()
+			country = this.readString(tempOffset)
+			countryOffset += 4
 		default:
-			country = this.readString(country_offset)
-			country_offset += uint32(len(country)) + 1
+			country = this.readString(countryOffset)
+			countryOffset += uint32(len(country)) + 1
 		}
 	case REDIRECT_MODE_2:
-		temp_offset := this.readUint24()
-		country = this.readString(temp_offset)
-		country_offset += 4
+		tempOffset := this.readUint24()
+		country = this.readString(tempOffset)
+		countryOffset += 4
 	default:
-		country = this.readString(country_offset)
-		country_offset += uint32(len(country)) + 1
+		country = this.readString(countryOffset)
+		countryOffset += uint32(len(country)) + 1
 	}
-	area = this.readArea(country_offset)
+	area = this.readArea(countryOffset)
 
 	enc := mahonia.NewDecoder("gbk")
 	result.Country = enc.ConvertString(string(country))
@@ -116,38 +137,31 @@ func (this *QQwry) SearchIpLocation(ip string) (Result, error) {
 }
 
 func (this *QQwry) binarySearch(ip uint32) uint32 {
-	buffer := this.readFromIpData(8, 0)
-	start := binary.LittleEndian.Uint32(buffer[:4])
-	end := binary.LittleEndian.Uint32(buffer[4:])
+	start := binary.LittleEndian.Uint32(this.pIpData.data[:4])
 
-	total := (end - start) / INDEX_LEN
-	low, high := uint32(0), total
+	low := this.pIpData.ipStart[ip>>24]
+	high := this.pIpData.ipEnd[ip>>24]
 
-	temp_index := make([]byte, INDEX_LEN)
+	//log.Println(low, high)
+
 	mid := uint32(0)
 	_ip := uint32(0)
 
-	//log.Println(uint32ToIp(ip))
 	for low < high {
-		mid = (low + high + 1) / 2
-		temp_index, _ip = this.binaryCheck(start + mid*INDEX_LEN)
+		mid = uint32((low + high + 1) / 2)
+		_ip = this.pIpData.ip2Num[mid]
 
 		if _ip < ip {
 			low = mid
 		} else if _ip > ip {
 			high = mid - 1
 		} else {
-			return byte3ToUint32(temp_index[4:])
+			ipIndex := start + mid*INDEX_LEN + 4
+			return byte3ToUint32(this.pIpData.data[ipIndex : ipIndex+3])
 		}
 	}
-	temp_index, _ = this.binaryCheck(start + low*INDEX_LEN)
-	return byte3ToUint32(temp_index[4:])
-}
-
-func (this *QQwry) binaryCheck(value uint32) ([]byte, uint32) {
-	buffer := this.readFromIpData(INDEX_LEN, value)
-	res := binary.LittleEndian.Uint32(buffer[:4])
-	return buffer, res
+	ipIndex := start + low*INDEX_LEN + 4
+	return byte3ToUint32(this.pIpData.data[ipIndex : ipIndex+3])
 }
 
 func (this *QQwry) readFromIpData(num uint32, offset ...uint32) []byte {
@@ -155,11 +169,11 @@ func (this *QQwry) readFromIpData(num uint32, offset ...uint32) []byte {
 		this.offset = offset[0]
 	}
 	end := this.offset + num
-	if end > this.p_ip_data.data_len {
+	if end > this.pIpData.dataLen {
 		return nil
 	}
 	res := make([]byte, num)
-	res = this.p_ip_data.data[this.offset:end]
+	res = this.pIpData.data[this.offset:end]
 	this.offset = end
 	return res
 }
@@ -184,8 +198,8 @@ func (this *QQwry) readArea(offset uint32) []byte {
 	case REDIRECT_MODE_1:
 		fallthrough
 	case REDIRECT_MODE_2:
-		temp_offset := this.readUint24()
-		return this.readString(temp_offset)
+		tempOffset := this.readUint24()
+		return this.readString(tempOffset)
 	case 0:
 		return []byte("")
 	default:

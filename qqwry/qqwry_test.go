@@ -9,8 +9,8 @@ import (
 
 func Benchmark(b *testing.B) {
 	rand.Seed(42)
-	p_ip_data, _ := ReadIpData("/usr/local/share/QQWry.Dat")
-	p_qqwry := NewQQwry(p_ip_data)
+	pIpData, _ := InitIpData("/usr/local/share/QQWry.Dat")
+	p_qqwry := NewQQwry(pIpData)
 
 	for i := 0; i < b.N; i++ {
 		test_case := 1
@@ -21,7 +21,7 @@ func Benchmark(b *testing.B) {
 				fmt.Println(err, ip_s)
 				continue
 			}
-			//		fmt.Printf("Search: %s\nCountry: %s\nArea: %s\n", ip_s, res.Country, res.Area)
+			//fmt.Printf("Search: %s\nCountry: %s\nArea: %s\n", ip_s, res.Country, res.Area)
 		}
 	}
 }
