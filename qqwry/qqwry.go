@@ -58,9 +58,16 @@ func InitIpData(filePath string) (*ipData, error) {
 	}
 
 	res.dataLen = uint32(len(res.data))
+	if res.dataLen < 8 {
+		return res, errors.New("QQwry.dat damaged(too short)")
+	}
 	header := res.data[:8]
 	start := binary.LittleEndian.Uint32(header[:4])
 	end := binary.LittleEndian.Uint32(header[4:])
+	if end < start {
+		return res, errors.New("QQwry.dat damaged(too short)")
+	}
+
 	n := int((end-start)/INDEX_LEN + 1)
 
 	res.ip2Num = make([]uint32, n)
