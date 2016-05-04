@@ -91,8 +91,11 @@ func InitIpData(filePath string) (*ipData, error) {
 	return res, nil
 }
 
-func NewQQwry(p *ipData) *QQwry {
-	return &QQwry{p, 0}
+func NewQQwry(p *ipData) (*QQwry, error) {
+	if p == nil {
+		return &QQwry{}, errors.New("NewQQwry failed")
+	}
+	return &QQwry{pIpData: p, offset: 0}, nil
 }
 
 func (this *QQwry) SearchIpLocation(ip string) (Result, error) {

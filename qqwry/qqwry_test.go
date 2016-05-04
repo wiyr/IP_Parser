@@ -2,6 +2,7 @@ package qqwry
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"net"
 	"testing"
@@ -9,8 +10,16 @@ import (
 
 func Benchmark(b *testing.B) {
 	rand.Seed(42)
-	pIpData, _ := InitIpData("/usr/local/share/QQWry.Dat")
-	p_qqwry := NewQQwry(pIpData)
+	pIpData, err := InitIpData("/usr/local/share/QQWry.Dat")
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	p_qqwry, err := NewQQwry(pIpData)
+	if err != nil {
+		return
+	}
 
 	for i := 0; i < b.N; i++ {
 		test_case := 1
