@@ -1,4 +1,4 @@
-package qqwry
+package qq
 
 import (
 	"fmt"
@@ -6,18 +6,14 @@ import (
 	"math/rand"
 	"net"
 	"testing"
+	"time"
 )
 
 func Benchmark(b *testing.B) {
-	rand.Seed(42)
-	pIpData, err := InitIpData("/usr/local/share/QQWry.Dat")
+	rand.Seed(time.Now().UnixNano())
+	err := InitIpData("/usr/local/share/QQWry.Dat")
 	if err != nil {
 		log.Println(err)
-		return
-	}
-
-	p_qqwry, err := NewQQwry(pIpData)
-	if err != nil {
 		return
 	}
 
@@ -25,12 +21,12 @@ func Benchmark(b *testing.B) {
 		test_case := 1
 		for j := 0; j < test_case; j++ {
 			ip_s := getIpString()
-			_, err := p_qqwry.SearchIpLocation(ip_s) //string(os.Args[1]))
+			res, err := SearchIpLocation(ip_s) //string(os.Args[1]))
 			if err != nil {
 				fmt.Println(err, ip_s)
 				continue
 			}
-			//fmt.Printf("Search: %s\nCountry: %s\nArea: %s\n", ip_s, res.Country, res.Area)
+			fmt.Printf("Search: %s\nCountry: %s\nArea: %s\n", ip_s, res.Country, res.Area)
 		}
 	}
 }
