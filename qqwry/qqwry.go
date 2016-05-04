@@ -1,4 +1,4 @@
-package qq
+package qqwry
 
 import (
 	"encoding/binary"
@@ -206,7 +206,7 @@ func readFromIpData(num uint32, offset ...uint32) ([]byte, error) {
 
 func readString(offset uint32) ([]byte, error) {
 	ips.offset = offset
-	var max_len_info uint32 = 100 // max length of info
+	var max_len_info uint32 = 500 // max length of info
 	end := offset + max_len_info
 	if end > ips.dataLen {
 		end = ips.dataLen

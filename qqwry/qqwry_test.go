@@ -1,4 +1,4 @@
-package qq
+package qqwry
 
 import (
 	"fmt"
