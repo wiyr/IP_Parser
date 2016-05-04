@@ -21,12 +21,12 @@ func Benchmark(b *testing.B) {
 		test_case := 1
 		for j := 0; j < test_case; j++ {
 			ip_s := getIpString()
-			res, err := SearchIpLocation(ip_s) //string(os.Args[1]))
+			_, err := SearchIpLocation(ip_s) //string(os.Args[1]))
 			if err != nil {
 				fmt.Println(err, ip_s)
 				continue
 			}
-			fmt.Printf("Search: %s\nCountry: %s\nArea: %s\n", ip_s, res.Country, res.Area)
+			//fmt.Printf("Search: %s\nCountry: %s\nArea: %s\n", ip_s, res.Country, res.Area)
 		}
 	}
 }

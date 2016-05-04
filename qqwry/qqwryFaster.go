@@ -60,7 +60,7 @@ func InitIpData(filePath string) error {
 	header := ips.data[:8]
 	start := binary.LittleEndian.Uint32(header[:4])
 	end := binary.LittleEndian.Uint32(header[4:])
-	if end < start {
+	if end < start || (end-start)%INDEX_LEN != 0 {
 		return errors.New("QQwry.dat damaged(too short)")
 	}
 
@@ -107,6 +107,7 @@ func resolveIndex(index uint32) (Result, error) {
 	if ips.ipBelong[index] != res {
 		return ips.ipBelong[index], nil
 	}
+
 	var country []byte
 	var area []byte
 
@@ -115,32 +116,51 @@ func resolveIndex(index uint32) (Result, error) {
 	offset := byte3ToUint32(ips.data[start+4 : start+7])
 	countryOffset := offset + 4
 
+	var err error
+	var tempOffset uint32
 	switch readMode(countryOffset) {
 	case 0:
 	case REDIRECT_MODE_1:
-		countryOffset = readUint24()
+		if countryOffset, err = readUint24(); err != nil {
+			return res, err
+		}
 		switch readMode(countryOffset) {
 		case REDIRECT_MODE_2:
-			tempOffset := readUint24()
-			country = readString(tempOffset)
+			if tempOffset, err = readUint24(); err != nil {
+				return res, err
+			}
+			if country, err = readString(tempOffset); err != nil {
+				return res, err
+			}
 			countryOffset += 4
 		default:
-			country = readString(countryOffset)
+			if country, err = readString(countryOffset); err != nil {
+				return res, err
+			}
 			countryOffset += uint32(len(country)) + 1
 		}
 	case REDIRECT_MODE_2:
-		tempOffset := readUint24()
-		country = readString(tempOffset)
+		if tempOffset, err = readUint24(); err != nil {
+			return res, err
+		}
+		if country, err = readString(tempOffset); err != nil {
+			return res, err
+		}
 		countryOffset += 4
 	default:
-		country = readString(countryOffset)
+		if country, err = readString(countryOffset); err != nil {
+			return res, err
+		}
 		countryOffset += uint32(len(country)) + 1
 	}
-	area = readArea(countryOffset)
+	if area, err = readArea(countryOffset); err != nil {
+		return res, err
+	}
 
 	enc := mahonia.NewDecoder("gbk")
 	res.Country = enc.ConvertString(string(country))
 	res.Area = enc.ConvertString(string(area))
+
 	ips.ipBelong[index] = res
 
 	return res, nil
@@ -170,58 +190,68 @@ func binarySearch(ip uint32) uint32 {
 	return low
 }
 
-func readFromIpData(num uint32, offset ...uint32) []byte {
+func readFromIpData(num uint32, offset ...uint32) ([]byte, error) {
 	if len(offset) > 0 {
 		ips.offset = offset[0]
 	}
 	end := ips.offset + num
 	if end > ips.dataLen {
-		return nil
+		return []byte(""), errors.New("read ip form data out of index")
 	}
 	res := make([]byte, num)
 	res = ips.data[ips.offset:end]
 	ips.offset = end
-	return res
+	return res, nil
 }
 
-func readString(offset uint32) []byte {
+func readString(offset uint32) ([]byte, error) {
 	ips.offset = offset
-	var max_len_info = 50
-	res := make([]byte, 0, max_len_info)
-	buffer := make([]byte, 1)
-	for i := 0; i < max_len_info; i++ {
-		buffer = readFromIpData(1)
-		if buffer[0] == 0 {
+	var max_len_info uint32 = 100 // max length of info
+	end := offset + max_len_info
+	if end > ips.dataLen {
+		end = ips.dataLen
+	}
+	for ; ips.offset < end; ips.offset++ {
+
+		if ips.data[ips.offset] == 0 {
 			break
 		}
-		res = append(res, buffer[0])
 	}
-	return res
+	if ips.offset == end {
+		return nil, errors.New("readString error, name too long")
+	}
+	return ips.data[offset:ips.offset], nil
 }
 
-func readArea(offset uint32) []byte {
+func readArea(offset uint32) ([]byte, error) {
 	switch readMode(offset) {
 	case REDIRECT_MODE_1:
 		fallthrough
 	case REDIRECT_MODE_2:
-		tempOffset := readUint24()
+		tempOffset, err := readUint24()
+		if err != nil {
+			return []byte(""), err
+		}
 		return readString(tempOffset)
 	case 0:
-		return []byte("")
+		return []byte(""), nil
 	default:
 		return readString(offset)
 	}
-	return []byte("")
+	return []byte(""), nil
 }
 
 func readMode(offset uint32) byte {
-	res := readFromIpData(1, offset)
+	res, _ := readFromIpData(1, offset)
 	return res[0]
 }
 
-func readUint24() uint32 {
-	res := readFromIpData(3) // ..
-	return byte3ToUint32(res)
+func readUint24() (uint32, error) {
+	res, err := readFromIpData(3) // ..
+	if err != nil {
+		return uint32(0), err
+	}
+	return byte3ToUint32(res), nil
 }
 
 func byte3ToUint32(b []byte) uint32 {
