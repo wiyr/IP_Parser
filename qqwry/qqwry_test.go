@@ -16,6 +16,7 @@ func Benchmark(b *testing.B) {
 		log.Println(err)
 		return
 	}
+	//b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		test_case := 1

@@ -36,8 +36,7 @@ var ips *ipData
 func InitIpData(filePath string) error {
 	ips = &ipData{}
 
-	_, err := os.Stat(filePath)
-	if err != nil {
+	if _, err := os.Stat(filePath); err != nil {
 		return err
 	}
 
@@ -68,8 +67,15 @@ func InitIpData(filePath string) error {
 
 	ips.ipBelong = make([]Result, n)
 	ips.ip2Num = make([]uint32, n)
+	//var offset uint32
 	for i, j := start, 0; i <= end; i += 7 {
 		ips.ip2Num[j] = binary.LittleEndian.Uint32(ips.data[i : i+4])
+		/*offset = byte3ToUint32(ips.data[i+4 : i+7])
+		ips.ipBelong[j], err = resolveOffset(offset)
+		if err != nil {
+			log.Println(err)
+			return err
+		}*/
 		j += 1
 	}
 
@@ -108,12 +114,20 @@ func resolveIndex(index uint32) (Result, error) {
 		return ips.ipBelong[index], nil
 	}
 
-	var country []byte
-	var area []byte
-
 	start := binary.LittleEndian.Uint32(ips.data[:4])
 	start += index * INDEX_LEN
 	offset := byte3ToUint32(ips.data[start+4 : start+7])
+
+	var err error
+	ips.ipBelong[index], err = resolveOffset(offset)
+	return ips.ipBelong[index], err
+}
+
+func resolveOffset(offset uint32) (Result, error) {
+	res := Result{}
+
+	var country []byte
+	var area []byte
 	countryOffset := offset + 4
 
 	var err error
@@ -161,8 +175,6 @@ func resolveIndex(index uint32) (Result, error) {
 	res.Country = enc.ConvertString(string(country))
 	res.Area = enc.ConvertString(string(area))
 
-	ips.ipBelong[index] = res
-
 	return res, nil
 }
 
@@ -206,13 +218,8 @@ func readFromIpData(num uint32, offset ...uint32) ([]byte, error) {
 
 func readString(offset uint32) ([]byte, error) {
 	ips.offset = offset
-	var max_len_info uint32 = 500 // max length of info
-	end := offset + max_len_info
-	if end > ips.dataLen {
-		end = ips.dataLen
-	}
+	end := ips.dataLen
 	for ; ips.offset < end; ips.offset++ {
-
 		if ips.data[ips.offset] == 0 {
 			break
 		}
