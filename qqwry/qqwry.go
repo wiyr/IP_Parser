@@ -33,6 +33,12 @@ type ipData struct {
 
 var ips *ipData
 
+/*func main() {
+	InitIpData("/usr/local/share/fakeQQWry.dat")
+	res, _ := SearchIpLocation("58.0.11.0")
+	fmt.Println(res)
+}*/
+
 func InitIpData(filePath string) error {
 	ips = &ipData{}
 
@@ -54,26 +60,26 @@ func InitIpData(filePath string) error {
 
 	ips.dataLen = uint32(len(ips.data))
 	if ips.dataLen < 8 {
-		return errors.New("QQwry.dat damaged(too short)")
+		return errors.New("invalid file (too short)")
 	}
 	header := ips.data[:8]
 	start := binary.LittleEndian.Uint32(header[:4])
 	end := binary.LittleEndian.Uint32(header[4:])
 	if end < start || (end-start)%INDEX_LEN != 0 {
-		return errors.New("QQwry.dat damaged(too short)")
+		return errors.New("invalid file (too short)")
 	}
 
 	n := int((end-start)/INDEX_LEN + 1)
 
 	ips.ipBelong = make([]Result, n)
 	ips.ip2Num = make([]uint32, n)
-	//var offset uint32
+	//	var offset uint32
 	for i, j := start, 0; i <= end; i += 7 {
 		ips.ip2Num[j] = binary.LittleEndian.Uint32(ips.data[i : i+4])
 		/*offset = byte3ToUint32(ips.data[i+4 : i+7])
 		ips.ipBelong[j], err = resolveOffset(offset)
 		if err != nil {
-			log.Println(err)
+			log.Println(err, offset)
 			return err
 		}*/
 		j += 1
@@ -96,11 +102,9 @@ func InitIpData(filePath string) error {
 }
 
 func SearchIpLocation(ip string) (Result, error) {
-	res := Result{}
-
 	ipAddress := net.ParseIP(ip)
 	if ipAddress == nil {
-		return res, errors.New("invalid ip")
+		return Result{}, errors.New("invalid ip")
 	}
 
 	index := binarySearch(binary.BigEndian.Uint32(ipAddress.To4()))
@@ -132,13 +136,20 @@ func resolveOffset(offset uint32) (Result, error) {
 
 	var err error
 	var tempOffset uint32
-	switch readMode(countryOffset) {
+	var mode byte
+	if mode, err = readMode(countryOffset); err != nil {
+		return res, err
+	}
+	switch mode {
 	case 0:
 	case REDIRECT_MODE_1:
 		if countryOffset, err = readUint24(); err != nil {
 			return res, err
 		}
-		switch readMode(countryOffset) {
+		if mode, err = readMode(countryOffset); err != nil {
+			return res, err
+		}
+		switch mode {
 		case REDIRECT_MODE_2:
 			if tempOffset, err = readUint24(); err != nil {
 				return res, err
@@ -182,8 +193,6 @@ func binarySearch(ip uint32) uint32 {
 	low := ips.ipStart[ip>>24]
 	high := ips.ipEnd[ip>>24]
 
-	//log.Println(low, high)
-
 	mid := uint32(0)
 	_ip := uint32(0)
 
@@ -208,7 +217,7 @@ func readFromIpData(num uint32, offset ...uint32) ([]byte, error) {
 	}
 	end := ips.offset + num
 	if end > ips.dataLen {
-		return []byte(""), errors.New("read ip form data out of index")
+		return []byte(""), errors.New("read ip from data out of index")
 	}
 	res := make([]byte, num)
 	res = ips.data[ips.offset:end]
@@ -217,6 +226,9 @@ func readFromIpData(num uint32, offset ...uint32) ([]byte, error) {
 }
 
 func readString(offset uint32) ([]byte, error) {
+	if offset > ips.dataLen {
+		return []byte(""), errors.New("offset out of index, maybe file damaged")
+	}
 	ips.offset = offset
 	end := ips.dataLen
 	for ; ips.offset < end; ips.offset++ {
@@ -231,7 +243,12 @@ func readString(offset uint32) ([]byte, error) {
 }
 
 func readArea(offset uint32) ([]byte, error) {
-	switch readMode(offset) {
+	var err error
+	var mode byte
+	if mode, err = readMode(offset); err != nil {
+		return []byte(""), err
+	}
+	switch mode {
 	case REDIRECT_MODE_1:
 		fallthrough
 	case REDIRECT_MODE_2:
@@ -248,13 +265,16 @@ func readArea(offset uint32) ([]byte, error) {
 	return []byte(""), nil
 }
 
-func readMode(offset uint32) byte {
-	res, _ := readFromIpData(1, offset)
-	return res[0]
+func readMode(offset uint32) (byte, error) {
+	res, err := readFromIpData(1, offset)
+	if err != nil {
+		return byte(0), err
+	}
+	return res[0], nil
 }
 
 func readUint24() (uint32, error) {
-	res, err := readFromIpData(3) // ..
+	res, err := readFromIpData(3)
 	if err != nil {
 		return uint32(0), err
 	}
@@ -262,12 +282,8 @@ func readUint24() (uint32, error) {
 }
 
 func byte3ToUint32(b []byte) uint32 {
-	res := uint32(0)
-	for i := 2; i >= 0; i-- {
-		res <<= 8
-		res += uint32(b[i])
-	}
-	return res
+	_ = b[2]
+	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16
 }
 
 func uint32ToIp(value uint32) string {

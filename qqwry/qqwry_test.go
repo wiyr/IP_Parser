@@ -27,7 +27,13 @@ func Benchmark(b *testing.B) {
 				fmt.Println(err, ip_s)
 				continue
 			}
+			/*bres, err := exec.Command("nali", ip_s).Output()
+			if err != nil {
+				fmt.Println(err)
+				return
+			}*/
 			//fmt.Printf("Search: %s\nCountry: %s\nArea: %s\n", ip_s, res.Country, res.Area)
+			//fmt.Printf("%s\n", bres)
 		}
 	}
 }
